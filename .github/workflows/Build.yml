@@ -31,7 +31,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --tests --all --all-features -- -D warnings
           
-  Cargo-Deny:
+  Deny:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
