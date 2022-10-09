@@ -1,0 +1,9 @@
+[package]
+name = "twine"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+once_cell = { version = "1.15.0", default-features = false, features = [ "std" ] }
+scraper = { version = "0.13.0", default-features = false }
+thiserror = "1.0.37"
