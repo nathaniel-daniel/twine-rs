@@ -1,6 +1,7 @@
 /// Types
 pub mod types;
 
+pub use crate::types::ParsedStoryFormat;
 pub use crate::types::Twine2Passage;
 pub use crate::types::Twine2Story;
 
@@ -21,6 +22,20 @@ mod test {
     #[test]
     fn test_1_parse() {
         let story = Twine2Story::from_html(TEST_1).expect("failed to parse TEST_1");
+        assert!(story.name == "Talkr SugarCube Demo");
+        assert!(story.ifid == "5AFA83C5-4D61-438D-AE9B-23A3EDABBF49");
+        assert!(story.format.as_deref() == Some("SugarCube"));
+        assert!(story.format_version.as_deref() == Some("2.21.0"));
+        assert!(story.startnode.as_deref() == Some("1"));
+        assert!(story.zoom.as_deref() == Some("1"));
+        assert!(story.creator.as_deref() == Some("Twine"));
+        assert!(story.creator_version.as_deref() == Some("2.2.1"));
+
+        assert!(matches!(
+            story.parse_format(),
+            Some(Ok(ParsedStoryFormat::SugarCube))
+        ));
+
         dbg!(&story);
     }
 }

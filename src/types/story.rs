@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use scraper::Html;
 use scraper::Selector;
+use std::str::FromStr;
 
 static TW_STORY_DATA_SELECTOR: Lazy<Selector> =
     Lazy::new(|| Selector::parse("tw-storydata").expect("invalid TW_STORY_DATA_SELECTOR"));
@@ -137,6 +138,11 @@ impl Twine2Story {
             story_stylesheet,
         })
     }
+
+    /// Try to parse the story format.
+    pub fn parse_format(&self) -> Option<Result<ParsedStoryFormat, FromStrError>> {
+        self.format.as_deref().map(ParsedStoryFormat::from_str)
+    }
 }
 
 /// An error that may occur while parsing a Twine2Passage
@@ -251,5 +257,33 @@ impl Twine2Passage {
             size,
             content,
         })
+    }
+}
+
+/// An error that may occur while parsing a story format.
+#[derive(Debug)]
+pub struct FromStrError(String);
+
+impl std::fmt::Display for FromStrError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "`{}` is not a valid story format", self.0)
+    }
+}
+
+/// A parsed story format
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum ParsedStoryFormat {
+    /// The Sugar Cube format
+    SugarCube,
+}
+
+impl FromStr for ParsedStoryFormat {
+    type Err = FromStrError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "SugarCube" => Ok(Self::SugarCube),
+            _ => Err(FromStrError(input.into())),
+        }
     }
 }
