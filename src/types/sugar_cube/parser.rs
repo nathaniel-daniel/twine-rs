@@ -12,11 +12,19 @@ pub struct Macro<'a> {
     pub args: Vec<&'a str>,
 }
 
+/// A closing Macro
+#[derive(Debug, PartialEq, Eq)]
+pub struct CloseMacro<'a> {
+    /// The macro name
+    pub name: &'a str,
+}
+
 /// Content
 #[derive(Debug, PartialEq)]
 pub enum Content<'a> {
     Text { value: &'a str },
     Macro { macro_: Macro<'a> },
+    CloseMacro { macro_: CloseMacro<'a> },
 }
 
 /// An error occured while parsing
@@ -63,6 +71,8 @@ impl ParserContext {
                 tags: Some(Vec::new()),
             },
         );
+
+        ctx.add_macro_def("remember".into(), MacroDef { tags: None });
 
         ctx
     }
@@ -181,6 +191,28 @@ impl<'a, 'b> Parser<'a, 'b> {
         while let Some((i, ch)) = self.peek_ch() {
             match ch {
                 '<' => {
+                    if self.chars.as_str().starts_with("<</") {
+                        let mut self_clone = self.clone();
+                        match self_clone.parse_close_macro() {
+                            Ok(macro_) => {
+                                // Push the text block we were working on
+                                let text = &self.input[start..i];
+                                if !text.is_empty() {
+                                    content.push(Content::Text { value: text });
+                                }
+
+                                // Skip the amount the macro parser ate.
+                                self.advance_n(self_clone.get_cur_pos() - self.get_cur_pos());
+                                content.push(Content::CloseMacro { macro_ });
+
+                                // Set the start of the next text block.
+                                start = self.get_cur_pos();
+                            }
+                            Err(e) => {
+                                return Err(e);
+                            }
+                        }
+                    }
                     if self.chars.as_str().starts_with("<<") {
                         let mut self_clone = self.clone();
                         match self_clone.parse_macro() {
@@ -210,6 +242,12 @@ impl<'a, 'b> Parser<'a, 'b> {
                     self.advance_n(1);
                 }
             }
+        }
+
+        // Push the text block we were working on
+        let text = &self.input[start..];
+        if !text.is_empty() {
+            content.push(Content::Text { value: text });
         }
 
         Ok(content)
@@ -309,6 +347,30 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
 
         Ok(Macro { name, args })
+    }
+
+    fn parse_close_macro(&mut self) -> Result<CloseMacro<'b>, ParseError<'b>> {
+        // <</
+        let lmacro = self.next_n_str(3).ok_or(ParseError::UnexpectedEof)?;
+        if lmacro != "<</" {
+            return Err(ParseError::Unexpected {
+                expected: "<</",
+                actual: Some(lmacro),
+            });
+        }
+
+        let name = self.parse_macro_name()?;
+
+        // >>
+        let rmacro = self.next_n_str(2).ok_or(ParseError::UnexpectedEof)?;
+        if rmacro != ">>" {
+            return Err(ParseError::Unexpected {
+                expected: ">>",
+                actual: Some(rmacro),
+            });
+        }
+
+        Ok(CloseMacro { name })
     }
 
     fn parse_macro_name(&mut self) -> Result<&'b str, ParseError<'b>> {
