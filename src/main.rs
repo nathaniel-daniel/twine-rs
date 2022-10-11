@@ -1,7 +1,10 @@
 use anyhow::anyhow;
 use anyhow::Context;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
+use twine::types::sugar_cube::Content as SugarCubeContent;
 use twine::types::sugar_cube::Parser;
 use twine::types::sugar_cube::ParserContext;
 use twine::ParsedStoryFormat;
@@ -119,7 +122,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
             }
 
             let story = Twine2Story::from_html(&html).context("failed to parse story")?;
-            // let mut resources = Vec::with_capacity(16);
+            let mut resources = Vec::with_capacity(16);
             match story.parse_format() {
                 Some(Ok(format)) => {
                     println!("Story Format: {:?}", format);
@@ -133,22 +136,19 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
 
                             for passage in story.passages.iter() {
                                 let parser_ctx = ParserContext::new();
-                                let content =
-                                    Parser::new(&parser_ctx, dbg!(passage.content.as_str()))
-                                        .parse_all_content()
-                                        .map_err(|e| anyhow!(e.to_string()))
-                                        .context("failed to parse content")?;
+                                let content = Parser::new(&parser_ctx, passage.content.as_str())
+                                    .parse_all_content()
+                                    .map_err(|e| anyhow!(e.to_string()))
+                                    .context("failed to parse content")?;
 
                                 for content in content {
-                                    /*
                                     match content {
-                                        SugarCubeContent::Image { img, .. } => {
-                                            println!("Found Image: `{img}`");
-                                            resources.push(img);
+                                        SugarCubeContent::Image { image } => {
+                                            println!("Found Image: `{}`", image.image);
+                                            resources.push(image.image.to_string());
                                         }
                                         _ => {}
                                     }
-                                    */
                                 }
                             }
                         }
@@ -159,6 +159,68 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                 }
                 None => {
                     println!("Warning: Story is missing a format");
+                }
+            }
+
+            if story.story_javascript.is_some() {
+                println!("Warning: Ignoring story javascript...");
+            }
+
+            if let Some(css) = story.story_stylesheet.as_deref() {
+                static CSS_URL_REGEX: Lazy<Regex> =
+                    Lazy::new(|| Regex::new(r#"url\((.*)\);"#).unwrap());
+                println!("Warning: Story stylesheet parser only recognizes url() values");
+                let captures = CSS_URL_REGEX.captures_iter(dbg!(css));
+                for capture in captures {
+                    let url = &capture[1];
+                    println!("Found CSS resource: `{}`", url);
+                    resources.push(url.to_string());
+                }
+            }
+
+            for resource in resources {
+                let url = base_url.join(&resource).context("invalid url")?;
+                let path = options.out_dir.join(&resource);
+
+                if let Some(path_parent) = path.parent() {
+                    tokio::fs::create_dir_all(&path_parent)
+                        .await
+                        .context("failed to create dir")?;
+                }
+
+                println!("Downloading `{}`...", resource);
+                {
+                    match tokio::fs::metadata(&path).await {
+                        Ok(_metadata) => {
+                            println!("  File exists, skipping...");
+                            continue;
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            // Pass
+                        }
+                        Err(e) => {
+                            return Err(e).context("failed to stat file");
+                        }
+                    }
+
+                    let tmp_path = pikadick_util::with_push_extension(&path, "part");
+
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .create_new(true)
+                        .write(true)
+                        .open(&tmp_path)
+                        .await
+                        .context("failed to open tmp file")?;
+                    let mut tmp_path = pikadick_util::DropRemovePath::new(tmp_path);
+
+                    pikadick_util::download_to_file(&client, url.as_str(), &mut file)
+                        .await
+                        .context("failed to download to file")?;
+                    tokio::fs::rename(&tmp_path, path)
+                        .await
+                        .context("failed to rename path")?;
+
+                    tmp_path.persist();
                 }
             }
         }
