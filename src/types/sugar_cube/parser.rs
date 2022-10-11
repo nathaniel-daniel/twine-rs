@@ -914,6 +914,22 @@ mod test {
             ];
             assert!(content == expected, "{content:#?} != {expected:#?}");
         }
+
+        {
+            let content = "<<if $value > 1>>s<</if>>";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+            let expected = vec![Content::Macro {
+                macro_: Macro {
+                    name: "if",
+                    args: vec!["$value", ">", "1"],
+                    content: vec![Content::Text { value: "s" }],
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
     }
 
     #[test]
