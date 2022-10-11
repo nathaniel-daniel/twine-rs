@@ -41,6 +41,12 @@ pub struct Image<'a> {
 
     /// The link
     pub link: Option<&'a str>,
+
+    /// The setter
+    pub setter: Option<&'a str>,
+
+    /// The title
+    pub title: Option<&'a str>,
 }
 
 /// Content
@@ -622,12 +628,26 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn parse_image(&mut self) -> Result<Image<'b>, ParseError<'b>> {
         let mut link = None;
+        let mut setter = None;
+        let mut title = None;
 
         // [img[
         self.expect_next_str("[img[")?;
 
-        let image = self.parse_link_or_image_initial_block_body()?;
-        let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
+        let mut image = self.parse_link_or_image_initial_block_body()?;
+
+        let (ch_i, ch) = match self.peek_ch().ok_or(ParseError::UnexpectedEof)? {
+            (_, '|') => {
+                self.advance_n(1);
+                let mut chunk = self.parse_link_or_image_block_body()?;
+                std::mem::swap(&mut image, &mut chunk);
+                title = Some(chunk);
+
+                self.peek_ch().ok_or(ParseError::UnexpectedEof)?
+            }
+            v => v,
+        };
+
         match ch {
             ']' => {
                 self.advance_n(1);
@@ -637,7 +657,12 @@ impl<'a, 'b> Parser<'a, 'b> {
                     ']' => {
                         self.advance_n(1);
 
-                        return Ok(Image { image, link });
+                        return Ok(Image {
+                            image,
+                            link,
+                            setter,
+                            title,
+                        });
                     }
                     '[' => {
                         self.advance_n(1);
@@ -660,8 +685,54 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
         }
 
+        let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
+        match ch {
+            ']' => {
+                self.advance_n(1);
+
+                let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
+
+                match ch {
+                    ']' => {
+                        self.advance_n(1);
+
+                        return Ok(Image {
+                            image,
+                            link,
+                            setter,
+                            title,
+                        });
+                    }
+                    '[' => {
+                        self.advance_n(1);
+
+                        let chunk = self.parse_link_or_image_block_body()?;
+                        setter = Some(chunk);
+                    }
+                    _ => {
+                        return Err(ParseError::Unexpected {
+                            expected: "]",
+                            actual: Some(&self.input[ch_i..(ch_i + ch.len_utf8())]),
+                        });
+                    }
+                }
+            }
+            _ => {
+                return Err(ParseError::Unexpected {
+                    expected: "]",
+                    actual: Some(&self.input[ch_i..(ch_i + ch.len_utf8())]),
+                });
+            }
+        }
+
         self.expect_next_str("]]")?;
-        Ok(Image { image, link })
+
+        Ok(Image {
+            image,
+            link,
+            setter,
+            title,
+        })
     }
 
     /// Parse a text + (']' or '|') and return the text. This will not consume the trailing char.
@@ -948,6 +1019,8 @@ mod test {
                 image: Image {
                     image: "Image",
                     link: None,
+                    setter: None,
+                    title: None,
                 },
             }];
             assert!(content == expected, "{content:#?} != {expected:#?}");
@@ -964,6 +1037,80 @@ mod test {
                 image: Image {
                     image: "Image",
                     link: Some("Link"),
+                    setter: None,
+                    title: None,
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "[img[Image][Link][Setter]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Image {
+                image: Image {
+                    image: "Image",
+                    link: Some("Link"),
+                    setter: Some("Setter"),
+                    title: None,
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "[img[Title|Image]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Image {
+                image: Image {
+                    image: "Image",
+                    link: None,
+                    setter: None,
+                    title: Some("Title"),
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "[img[Title|Image][Link]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Image {
+                image: Image {
+                    image: "Image",
+                    link: Some("Link"),
+                    setter: None,
+                    title: Some("Title"),
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "[img[Title|Image][Link][Setter]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Image {
+                image: Image {
+                    image: "Image",
+                    link: Some("Link"),
+                    setter: Some("Setter"),
+                    title: Some("Title"),
                 },
             }];
             assert!(content == expected, "{content:#?} != {expected:#?}");
