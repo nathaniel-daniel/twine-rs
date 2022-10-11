@@ -351,7 +351,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         let _macro_def = self
             .ctx
             .get_macro_def(name)
-            .ok_or(ParseError::UnknownMacro { name })?;
+            .ok_or(ParseError::UnknownMacro { name });
 
         // TODO: Conditionally attempt to parse args?
         let args = self.parse_macro_args()?;
