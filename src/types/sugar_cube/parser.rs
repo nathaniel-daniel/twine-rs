@@ -34,12 +34,22 @@ pub struct Link<'a> {
     pub setter: Option<&'a str>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Image<'a> {
+    /// The image
+    pub image: &'a str,
+
+    /// The link
+    pub link: Option<&'a str>,
+}
+
 /// Content
 #[derive(Debug, PartialEq, Eq)]
 pub enum Content<'a> {
     Text { value: &'a str },
     Macro { macro_: Macro<'a> },
     Link { link: Link<'a> },
+    Image { image: Image<'a> },
 }
 
 /// An error occured while parsing
@@ -199,6 +209,21 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Read a str, returning an error if the given string does not match
+    pub fn expect_next_str(&mut self, expected_str: &'static str) -> Result<(), ParseError<'b>> {
+        let actual_str = self
+            .next_n_str(expected_str.len())
+            .ok_or(ParseError::UnexpectedEof)?;
+        if actual_str != expected_str {
+            return Err(ParseError::Unexpected {
+                expected: expected_str,
+                actual: Some(actual_str),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Parse all content
     pub fn parse_all_content(&mut self) -> Result<Vec<Content<'b>>, ParseError<'b>> {
         let mut start = self.get_cur_pos();
@@ -237,7 +262,33 @@ impl<'a, 'b> Parser<'a, 'b> {
                     }
                 }
                 '[' => {
-                    if self.chars.as_str().starts_with("[[") {
+                    if self.chars.as_str().starts_with("[img[") {
+                        let mut self_clone = self.clone();
+                        match self_clone.parse_image() {
+                            Ok(image) => {
+                                // Push the text block we were working on
+                                let text = &self.input[start..i];
+                                if !text.is_empty() {
+                                    content.push(Content::Text { value: text });
+                                }
+
+                                // Skip the amount the image parser ate.
+                                while let Some((i, _ch)) = self.peek_ch() {
+                                    if i == self_clone.get_cur_pos() {
+                                        break;
+                                    }
+                                    self.advance_n(1);
+                                }
+                                content.push(Content::Image { image });
+
+                                // Set the start of the next text block.
+                                start = self.get_cur_pos();
+                            }
+                            Err(e) => {
+                                return Err(e);
+                            }
+                        }
+                    } else if self.chars.as_str().starts_with("[[") {
                         let mut self_clone = self.clone();
                         match self_clone.parse_link() {
                             Ok(link) => {
@@ -284,13 +335,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn parse_macro(&mut self) -> Result<Macro<'b>, ParseError<'b>> {
         // <<
-        let lmacro = self.next_n_str(2).ok_or(ParseError::UnexpectedEof)?;
-        if lmacro != "<<" {
-            return Err(ParseError::Unexpected {
-                expected: "<<",
-                actual: Some(lmacro),
-            });
-        }
+        self.expect_next_str("<<")?;
 
         // macro name
         let name = self.parse_macro_name()?;
@@ -306,13 +351,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         let args = self.parse_macro_args()?;
 
         // >>
-        let rmacro = self.next_n_str(2).ok_or(ParseError::UnexpectedEof)?;
-        if rmacro != ">>" {
-            return Err(ParseError::Unexpected {
-                expected: ">>",
-                actual: Some(rmacro),
-            });
-        }
+        self.expect_next_str(">>")?;
 
         let mut content = Vec::new();
 
@@ -342,24 +381,12 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn parse_close_macro(&mut self) -> Result<CloseMacro<'b>, ParseError<'b>> {
         // <</
-        let lmacro = self.next_n_str(3).ok_or(ParseError::UnexpectedEof)?;
-        if lmacro != "<</" {
-            return Err(ParseError::Unexpected {
-                expected: "<</",
-                actual: Some(lmacro),
-            });
-        }
+        self.expect_next_str("<</")?;
 
         let name = self.parse_macro_name()?;
 
         // >>
-        let rmacro = self.next_n_str(2).ok_or(ParseError::UnexpectedEof)?;
-        if rmacro != ">>" {
-            return Err(ParseError::Unexpected {
-                expected: ">>",
-                actual: Some(rmacro),
-            });
-        }
+        self.expect_next_str(">>")?;
 
         Ok(CloseMacro { name })
     }
@@ -478,61 +505,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         let mut text: Option<&str> = None;
         let mut setter: Option<&str> = None;
 
-        // [[
-        let llink = self.next_n_str(2).ok_or(ParseError::UnexpectedEof)?;
-        if llink != "[[" {
-            return Err(ParseError::Unexpected {
-                expected: "[[",
-                actual: Some(llink),
-            });
-        }
+        // [
+        self.expect_next_str("[[")?;
 
-        let mut link = {
-            let start = self.get_cur_pos();
-            loop {
-                let peek_buf = self
-                    .clone()
-                    .next_n_str(2)
-                    .ok_or(ParseError::UnexpectedEof)?;
-                let peek_buf_bytes = peek_buf.as_bytes();
-
-                match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
-                    (Some(b'|'), _) | (Some(b']'), Some(b']')) | (Some(b']'), Some(b'[')) => {
-                        let end = self.get_cur_pos();
-                        break &self.input[start..end];
-                    }
-                    (_, _) => {
-                        self.advance_n(1);
-                    }
-                }
-            }
-        };
+        let mut link = self.parse_link_or_image_initial_block_body()?;
 
         let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
         match ch {
             '|' => {
                 self.advance_n(1);
 
-                let mut chunk = {
-                    let start = self.get_cur_pos();
-                    loop {
-                        let peek_buf = self
-                            .clone()
-                            .next_n_str(2)
-                            .ok_or(ParseError::UnexpectedEof)?;
-                        let peek_buf_bytes = peek_buf.as_bytes();
-
-                        match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
-                            (Some(b']'), Some(b']')) | (Some(b']'), Some(b'[')) => {
-                                let end = self.get_cur_pos();
-                                break &self.input[start..end];
-                            }
-                            (_, _) => {
-                                self.advance_n(1);
-                            }
-                        }
-                    }
-                };
+                let mut chunk = self.parse_link_or_image_block_body()?;
                 std::mem::swap(&mut link, &mut chunk);
                 text = Some(chunk);
             }
@@ -635,6 +618,98 @@ impl<'a, 'b> Parser<'a, 'b> {
                 actual: Some(peek_buf),
             }),
         }
+    }
+
+    fn parse_image(&mut self) -> Result<Image<'b>, ParseError<'b>> {
+        let mut link = None;
+
+        // [img[
+        self.expect_next_str("[img[")?;
+
+        let image = self.parse_link_or_image_initial_block_body()?;
+        let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
+        match ch {
+            ']' => {
+                self.advance_n(1);
+                let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
+
+                match ch {
+                    ']' => {
+                        self.advance_n(1);
+
+                        return Ok(Image { image, link });
+                    }
+                    '[' => {
+                        self.advance_n(1);
+                        let chunk = self.parse_link_or_image_block_body()?;
+                        link = Some(chunk);
+                    }
+                    _ => {
+                        return Err(ParseError::Unexpected {
+                            expected: "]",
+                            actual: Some(&self.input[ch_i..(ch_i + ch.len_utf8())]),
+                        });
+                    }
+                }
+            }
+            _ => {
+                return Err(ParseError::Unexpected {
+                    expected: "]",
+                    actual: Some(&self.input[ch_i..(ch_i + ch.len_utf8())]),
+                });
+            }
+        }
+
+        self.expect_next_str("]]")?;
+        Ok(Image { image, link })
+    }
+
+    /// Parse a text + (']' or '|') and return the text. This will not consume the trailing char.
+    fn parse_link_or_image_initial_block_body(&mut self) -> Result<&'b str, ParseError<'b>> {
+        let start = self.get_cur_pos();
+        let text = loop {
+            let peek_buf = self
+                .clone()
+                .next_n_str(2)
+                .ok_or(ParseError::UnexpectedEof)?;
+            let peek_buf_bytes = peek_buf.as_bytes();
+
+            match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+                (Some(b'|'), _) | (Some(b']'), Some(b']')) | (Some(b']'), Some(b'[')) => {
+                    let end = self.get_cur_pos();
+                    break &self.input[start..end];
+                }
+                (_, _) => {
+                    self.advance_n(1);
+                }
+            }
+        };
+
+        Ok(text)
+    }
+
+    /// Parse a text + (']') and return the text. This will not consume the trailing char.
+    pub fn parse_link_or_image_block_body(&mut self) -> Result<&'b str, ParseError<'b>> {
+        let start = self.get_cur_pos();
+        let text = loop {
+            let peek_buf = self
+                .clone()
+                .next_n_str(2)
+                .ok_or(ParseError::UnexpectedEof)?;
+            let peek_buf_bytes = peek_buf.as_bytes();
+
+            match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+                (Some(b']'), Some(b']')) | (Some(b']'), Some(b'[')) => {
+                    let end = self.get_cur_pos();
+                    break &self.input[start..end];
+                }
+                (_, _) => {
+                    self.advance_n(1);
+                }
+            }
+        };
+
+        Ok(text)
     }
 }
 
@@ -804,7 +879,7 @@ mod test {
                     setter: None,
                 },
             }];
-            assert!(content == expected);
+            assert!(content == expected, "{content:#?} != {expected:#?}");
         }
 
         {
@@ -856,6 +931,42 @@ mod test {
                 },
             }];
             assert!(content == expected);
+        }
+    }
+
+    #[test]
+    fn parse_image() {
+        let ctx = ParserContext::new();
+        {
+            let content = "[img[Image]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Image {
+                image: Image {
+                    image: "Image",
+                    link: None,
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "[img[Image][Link]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Image {
+                image: Image {
+                    image: "Image",
+                    link: Some("Link"),
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
         }
     }
 
