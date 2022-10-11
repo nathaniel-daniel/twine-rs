@@ -75,6 +75,10 @@ pub enum ParseError<'a> {
     /// Unknown Macro
     #[error("the macro `{name}` is unknown")]
     UnknownMacro { name: &'a str },
+
+    /// Unpaired close macro
+    #[error("unpaired close macro `{0}`", macro_.name)]
+    UnpairedCloseMacro { macro_: CloseMacro<'a> },
 }
 
 /// The parser context, where macros should be registered
@@ -232,12 +236,39 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Parse all content
     pub fn parse_all_content(&mut self) -> Result<Vec<Content<'b>>, ParseError<'b>> {
+        self.parse_all_content_internal(None)
+    }
+
+    fn parse_all_content_internal(
+        &mut self,
+        break_on_unpaired_macro: Option<CloseMacro<'_>>,
+    ) -> Result<Vec<Content<'b>>, ParseError<'b>> {
         let mut start = self.get_cur_pos();
         let mut content = Vec::new();
         while let Some((i, ch)) = self.peek_ch() {
             match ch {
                 '<' => {
-                    if self.chars.as_str().starts_with("<<") {
+                    if self.chars.as_str().starts_with("<</") {
+                        // Push the text block we were working on
+                        let text = &self.input[start..i];
+                        if !text.is_empty() {
+                            content.push(Content::Text { value: text });
+                        }
+
+                        match self.parse_close_macro() {
+                            Ok(macro_) => match break_on_unpaired_macro.as_ref() {
+                                Some(test_macro) if test_macro == &macro_ => {
+                                    return Ok(content);
+                                }
+                                None | Some(_) => {
+                                    return Err(ParseError::UnpairedCloseMacro { macro_ });
+                                }
+                            },
+                            Err(e) => {
+                                return Err(e);
+                            }
+                        }
+                    } else if self.chars.as_str().starts_with("<<") {
                         let mut self_clone = self.clone();
                         match self_clone.parse_macro() {
                             Ok(macro_) => {
@@ -363,9 +394,23 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         // Try to find closing tag
         let closing_tag_index = self.chars.as_str().find(&format!("<</{name}>>"));
-        if let Some(closing_tag_index) = closing_tag_index {
-            let mut parser = Parser::new(self.ctx, &self.chars.as_str()[..closing_tag_index]);
-            content = parser.parse_all_content()?;
+        if closing_tag_index.is_some() {
+            let mut self_clone = self.clone();
+            content = match self_clone.parse_all_content_internal(Some(CloseMacro { name })) {
+                Ok(content) => content,
+                Err(e) => {
+                    return Err(e);
+                }
+            };
+
+            // Skip the amount the content parser ate.
+            while let Some((i, _ch)) = self.peek_ch() {
+                if i == self_clone.get_cur_pos() {
+                    break;
+                }
+                self.advance_n(1);
+            }
+            /*
             let resume_index = self.get_cur_pos() + closing_tag_index;
             while let Some((i, _ch)) = self.peek_ch() {
                 if i == resume_index {
@@ -373,9 +418,10 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 self.advance_n(1);
             }
+            */
 
-            // Consume close macro tag
-            let _close_macro = self.parse_close_macro()?;
+            // // Consume close macro tag
+            // let _close_macro = self.parse_close_macro()?;
         }
 
         Ok(Macro {
@@ -929,6 +975,14 @@ mod test {
                 },
             }];
             assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "<<if $value == 0>>value is 0<<else>>value is not zero<<if $value > 1>> but is greater than 1<</if>><</if>>";
+            let mut parser = Parser::new(&ctx, content);
+            let _content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
         }
     }
 

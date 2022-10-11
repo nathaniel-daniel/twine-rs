@@ -133,10 +133,11 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
 
                             for passage in story.passages.iter() {
                                 let parser_ctx = ParserContext::new();
-                                let content = Parser::new(&parser_ctx, passage.content.as_str())
-                                    .parse_all_content()
-                                    .map_err(|e| anyhow!(e.to_string()))
-                                    .context("failed to parse content")?;
+                                let content =
+                                    Parser::new(&parser_ctx, dbg!(passage.content.as_str()))
+                                        .parse_all_content()
+                                        .map_err(|e| anyhow!(e.to_string()))
+                                        .context("failed to parse content")?;
 
                                 for content in content {
                                     /*
