@@ -8,3 +8,6 @@ license = "MIT OR Apache-2.0"
 once_cell = { version = "1.15.0", default-features = false, features = [ "std" ] }
 scraper = { version = "0.13.0", default-features = false }
 thiserror = "1.0.37"
+
+[features]
+default = []

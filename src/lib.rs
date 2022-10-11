@@ -30,12 +30,31 @@ mod test {
         assert!(story.zoom.as_deref() == Some("1"));
         assert!(story.creator.as_deref() == Some("Twine"));
         assert!(story.creator_version.as_deref() == Some("2.2.1"));
+        assert!(story.passages.len() == 10);
 
         assert!(matches!(
             story.parse_format(),
             Some(Ok(ParsedStoryFormat::SugarCube))
         ));
 
-        dbg!(&story);
+        {
+            use self::types::sugar_cube::MacroDef;
+            use self::types::sugar_cube::Parser;
+            use self::types::sugar_cube::ParserContext;
+
+            let mut ctx = ParserContext::new();
+            ctx.add_macro_def("talkr".into(), MacroDef { tags: None });
+
+            for passage in story.passages.iter() {
+                dbg!(&passage.content);
+
+                let mut parser = Parser::new(&ctx, &passage.content);
+
+                let content = parser.parse_all_content().expect("failed to parse");
+                dbg!(content);
+            }
+        }
+
+        // dbg!(&story);
     }
 }
