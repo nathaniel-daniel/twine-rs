@@ -23,7 +23,7 @@ pub struct CloseMacro<'a> {
 }
 
 /// Content
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Content<'a> {
     Text { value: &'a str },
     Macro { macro_: Macro<'a> },
@@ -441,7 +441,7 @@ mod test {
         {
             let content = "<<= 'hello world'>>";
 
-            let mut parser = Parser::new(&ctx, &content);
+            let mut parser = Parser::new(&ctx, content);
             let content = parser
                 .parse_all_content()
                 .expect("failed to parse all content");
@@ -458,7 +458,7 @@ mod test {
         {
             let content = "<<print 'hello world'>>";
 
-            let mut parser = Parser::new(&ctx, &content);
+            let mut parser = Parser::new(&ctx, content);
             let content = parser
                 .parse_all_content()
                 .expect("failed to parse all content");
@@ -475,7 +475,7 @@ mod test {
         {
             let content = "<<- 'hello world'>>";
 
-            let mut parser = Parser::new(&ctx, &content);
+            let mut parser = Parser::new(&ctx, content);
             let content = parser
                 .parse_all_content()
                 .expect("failed to parse all content");
@@ -496,7 +496,7 @@ mod test {
 
         let content = "<<set $name to 5>>";
 
-        let mut parser = Parser::new(&ctx, &content);
+        let mut parser = Parser::new(&ctx, content);
         let content = parser
             .parse_all_content()
             .expect("failed to parse all content");
@@ -519,7 +519,7 @@ mod test {
         {
             let content = "<<silently>><</silently>>"; // <</silently>>
 
-            let mut parser = Parser::new(&ctx, &content);
+            let mut parser = Parser::new(&ctx, content);
             let content = parser
                 .parse_all_content()
                 .expect("failed to parse all content");
@@ -540,7 +540,7 @@ mod test {
             let content =
                 "<<talkr \"https://talkrapp.com/apngdemo/apng/morpheus.png\" en male 0>><</talkr>>more text";
 
-            let mut parser = Parser::new(&ctx, &content);
+            let mut parser = Parser::new(&ctx, content);
             let content = parser
                 .parse_all_content()
                 .expect("failed to parse all content");
@@ -570,7 +570,7 @@ mod test {
         {
             let content = "<<set $name to 5>>Hello<<- $name>>";
 
-            let mut parser = Parser::new(&ctx, &content);
+            let mut parser = Parser::new(&ctx, content);
             let content = parser
                 .parse_all_content()
                 .expect("failed to parse all content");
