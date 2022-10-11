@@ -22,11 +22,24 @@ pub struct CloseMacro<'a> {
     pub name: &'a str,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Link<'a> {
+    /// Link
+    pub link: &'a str,
+
+    /// Text
+    pub text: Option<&'a str>,
+
+    /// Setter
+    pub setter: Option<&'a str>,
+}
+
 /// Content
 #[derive(Debug, PartialEq, Eq)]
 pub enum Content<'a> {
     Text { value: &'a str },
     Macro { macro_: Macro<'a> },
+    Link { link: Link<'a> },
 }
 
 /// An error occured while parsing
@@ -223,9 +236,37 @@ impl<'a, 'b> Parser<'a, 'b> {
                         self.advance_n(1);
                     }
                 }
-                // '[' => {
-                //     todo!();
-                // }
+                '[' => {
+                    if self.chars.as_str().starts_with("[[") {
+                        let mut self_clone = self.clone();
+                        match self_clone.parse_link() {
+                            Ok(link) => {
+                                // Push the text block we were working on
+                                let text = &self.input[start..i];
+                                if !text.is_empty() {
+                                    content.push(Content::Text { value: text });
+                                }
+
+                                // Skip the amount the link parser ate.
+                                while let Some((i, _ch)) = self.peek_ch() {
+                                    if i == self_clone.get_cur_pos() {
+                                        break;
+                                    }
+                                    self.advance_n(1);
+                                }
+                                content.push(Content::Link { link });
+
+                                // Set the start of the next text block.
+                                start = self.get_cur_pos();
+                            }
+                            Err(e) => {
+                                return Err(e);
+                            }
+                        }
+                    } else {
+                        self.advance_n(1);
+                    }
+                }
                 _ => {
                     self.advance_n(1);
                 }
@@ -411,8 +452,11 @@ impl<'a, 'b> Parser<'a, 'b> {
                     (Some(_), Some(b' ' | b'>')) => {
                         self.advance_n(1);
                     }
-                    (_, _) => {
+                    (Some(_), Some(_)) => {
                         self.advance_n(2);
+                    }
+                    (_, _) => {
+                        self.advance_n(1);
                     }
                 }
             }
@@ -428,6 +472,169 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
 
         Ok(args)
+    }
+
+    fn parse_link(&mut self) -> Result<Link<'b>, ParseError<'b>> {
+        let mut text: Option<&str> = None;
+        let mut setter: Option<&str> = None;
+
+        // [[
+        let llink = self.next_n_str(2).ok_or(ParseError::UnexpectedEof)?;
+        if llink != "[[" {
+            return Err(ParseError::Unexpected {
+                expected: "[[",
+                actual: Some(llink),
+            });
+        }
+
+        let mut link = {
+            let start = self.get_cur_pos();
+            loop {
+                let peek_buf = self
+                    .clone()
+                    .next_n_str(2)
+                    .ok_or(ParseError::UnexpectedEof)?;
+                let peek_buf_bytes = peek_buf.as_bytes();
+
+                match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+                    (Some(b'|'), _) | (Some(b']'), Some(b']')) | (Some(b']'), Some(b'[')) => {
+                        let end = self.get_cur_pos();
+                        break &self.input[start..end];
+                    }
+                    (_, _) => {
+                        self.advance_n(1);
+                    }
+                }
+            }
+        };
+
+        let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
+        match ch {
+            '|' => {
+                self.advance_n(1);
+
+                let mut chunk = {
+                    let start = self.get_cur_pos();
+                    loop {
+                        let peek_buf = self
+                            .clone()
+                            .next_n_str(2)
+                            .ok_or(ParseError::UnexpectedEof)?;
+                        let peek_buf_bytes = peek_buf.as_bytes();
+
+                        match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+                            (Some(b']'), Some(b']')) | (Some(b']'), Some(b'[')) => {
+                                let end = self.get_cur_pos();
+                                break &self.input[start..end];
+                            }
+                            (_, _) => {
+                                self.advance_n(1);
+                            }
+                        }
+                    }
+                };
+                std::mem::swap(&mut link, &mut chunk);
+                text = Some(chunk);
+            }
+            ']' => {
+                self.advance_n(1);
+                let (ch_i, ch) = self.peek_ch().ok_or(ParseError::UnexpectedEof)?;
+
+                match ch {
+                    ']' => {
+                        self.advance_n(1);
+                        return Ok(Link { link, text, setter });
+                    }
+                    '[' => {
+                        self.advance_n(1);
+
+                        let chunk = {
+                            let start = self.get_cur_pos();
+
+                            loop {
+                                let peek_buf = self
+                                    .clone()
+                                    .next_n_str(2)
+                                    .ok_or(ParseError::UnexpectedEof)?;
+                                let peek_buf_bytes = peek_buf.as_bytes();
+
+                                match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+                                    (Some(b']'), Some(b']')) => {
+                                        let end = self.get_cur_pos();
+                                        self.advance_n(2);
+                                        break &self.input[start..end];
+                                    }
+                                    (_, _) => {
+                                        self.advance_n(1);
+                                    }
+                                }
+                            }
+                        };
+                        setter = Some(chunk);
+
+                        return Ok(Link { link, text, setter });
+                    }
+                    _ => {
+                        return Err(ParseError::Unexpected {
+                            expected: "]",
+                            actual: Some(&self.input[ch_i..(ch_i + ch.len_utf8())]),
+                        });
+                    }
+                }
+            }
+            _ => {
+                return Err(ParseError::Unexpected {
+                    expected: "|",
+                    actual: Some(&self.input[ch_i..(ch_i + ch.len_utf8())]),
+                });
+            }
+        }
+
+        let peek_buf = self
+            .clone()
+            .next_n_str(2)
+            .ok_or(ParseError::UnexpectedEof)?;
+        let peek_buf_bytes = peek_buf.as_bytes();
+        match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+            (Some(b']'), Some(b']')) => {
+                self.advance_n(2);
+
+                Ok(Link { link, text, setter })
+            }
+            (Some(b']'), Some(b'[')) => {
+                self.advance_n(2);
+
+                let chunk = {
+                    let start = self.get_cur_pos();
+
+                    loop {
+                        let peek_buf = self
+                            .clone()
+                            .next_n_str(2)
+                            .ok_or(ParseError::UnexpectedEof)?;
+                        let peek_buf_bytes = peek_buf.as_bytes();
+
+                        match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+                            (Some(b']'), Some(b']')) => {
+                                let end = self.get_cur_pos();
+                                self.advance_n(2);
+                                break &self.input[start..end];
+                            }
+                            (_, _) => {
+                                self.advance_n(1);
+                            }
+                        }
+                    }
+                };
+                setter = Some(chunk);
+
+                Ok(Link { link, text, setter })
+            }
+            _ => Err(ParseError::Unexpected {
+                expected: "]]",
+                actual: Some(peek_buf),
+            }),
+        }
     }
 }
 
@@ -564,6 +771,95 @@ mod test {
     }
 
     #[test]
+    fn parse_link() {
+        let ctx = ParserContext::new();
+        {
+            let content = "[[Link]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Link {
+                link: Link {
+                    link: "Link",
+                    text: None,
+                    setter: None,
+                },
+            }];
+            assert!(content == expected);
+        }
+
+        {
+            let content = "[[Text|Link]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Link {
+                link: Link {
+                    link: "Link",
+                    text: Some("Text"),
+                    setter: None,
+                },
+            }];
+            assert!(content == expected);
+        }
+
+        {
+            let content = "[[Link][Setter]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Link {
+                link: Link {
+                    link: "Link",
+                    text: None,
+                    setter: Some("Setter"),
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "[[Text|Link][Setter]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Link {
+                link: Link {
+                    link: "Link",
+                    text: Some("Text"),
+                    setter: Some("Setter"),
+                },
+            }];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
+        }
+
+        {
+            let content = "[[Regular APNG files|NonTalkr APNG]]";
+            let mut parser = Parser::new(&ctx, content);
+            let content = parser
+                .parse_all_content()
+                .expect("failed to parse all content");
+
+            let expected = vec![Content::Link {
+                link: Link {
+                    link: "NonTalkr APNG",
+                    text: Some("Regular APNG files"),
+                    setter: None,
+                },
+            }];
+            assert!(content == expected);
+        }
+    }
+
+    #[test]
     fn parse_content_kitchen_sink() {
         let ctx = ParserContext::new();
 
@@ -575,7 +871,6 @@ mod test {
                 .parse_all_content()
                 .expect("failed to parse all content");
 
-            dbg!(&content);
             let expected = vec![
                 Content::Macro {
                     macro_: Macro {
