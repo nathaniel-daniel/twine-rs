@@ -18,7 +18,7 @@ allow-osi-fsf-free = "neither"
 confidence-threshold = 0.93
 default = "deny"
 private = { ignore = true }
-allow = [ "Apache-2.0", "MIT", "MPL-2.0", "ISC", "Unicode-DFS-2016" ]
+allow = [ "Apache-2.0", "MIT", "MPL-2.0", "ISC", "Unicode-DFS-2016", "BSD-3-Clause" ]
 exceptions = []
 
 [bans]
@@ -33,6 +33,7 @@ skip = [
     { name = "phf_generator", version = "0.8.0" },
     { name = "phf_codegen", version = "0.8.0" },
     { name = "phf", version = "0.8.0" },
+    { name = "itoa", version = "0.4.8" },
 ]
 
 # Mostly soundness denies since the advisory lacks a section for soundess bugs
@@ -67,4 +68,6 @@ deny = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = [ "https://github.com/rust-lang/crates.io-index" ]
-allow-git = []
+allow-git = [
+    "https://github.com/ThatAnnoyingKid/pikadick-rs",
+]
