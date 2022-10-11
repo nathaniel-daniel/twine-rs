@@ -38,10 +38,19 @@ mod test {
         ));
 
         {
+            use self::types::sugar_cube::MacroDef;
+            use self::types::sugar_cube::Parser;
+            use self::types::sugar_cube::ParserContext;
+
+            let mut ctx = ParserContext::new();
+            ctx.add_macro_def("talkr".into(), MacroDef { tags: None });
+
             for passage in story.passages.iter().take(1) {
                 dbg!(&passage.content);
-                let content = self::types::sugar_cube::parse_content(&passage.content)
-                    .expect("failed to parse");
+
+                let mut parser = Parser::new(&ctx, &passage.content);
+
+                let content = parser.parse_all_content().expect("failed to parse");
                 dbg!(content);
             }
         }

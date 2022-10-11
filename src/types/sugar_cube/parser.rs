@@ -1,21 +1,6 @@
-use nom::branch::alt;
-use nom::bytes::complete::is_not;
-use nom::bytes::complete::tag;
-use nom::bytes::complete::take_till;
-use nom::bytes::complete::take_until;
-use nom::bytes::complete::take_while;
-use nom::character::complete::char;
-use nom::combinator::map;
-use nom::combinator::map_res;
-use nom::combinator::opt;
-use nom::combinator::peek;
-use nom::combinator::recognize;
-use nom::error::context;
-use nom::multi::separated_list0;
-use nom::sequence::delimited;
-use nom::sequence::preceded;
-use nom::sequence::tuple;
-use nom::IResult;
+#![allow(clippy::get_first)]
+
+use std::collections::HashMap;
 
 /// A Macro
 #[derive(Debug, PartialEq, Eq)]
@@ -27,173 +12,11 @@ pub struct Macro<'a> {
     pub args: Vec<&'a str>,
 }
 
-/// An Expression
-#[derive(Debug, PartialEq, Eq)]
-pub enum Expr<'a> {
-    /// A string literal
-    StringLiteral { value: &'a str },
-
-    /// An integer literal
-    IntegerLiteral { value: i64 },
-
-    /// An Ident
-    Ident { value: &'a str },
-
-    /// The to operator
-    ToOperator,
-}
-
 /// Content
 #[derive(Debug, PartialEq)]
 pub enum Content<'a> {
     Text { value: &'a str },
     Macro { macro_: Macro<'a> },
-}
-
-/// Parse a macro name
-///
-/// Macro Name: [A-Za-z][\\w-]*|[=-]
-fn parse_macro_name(i: &str) -> IResult<&str, &str> {
-    alt((
-        tag("="),
-        tag("-"),
-        take_while(|c: char| c.is_ascii_alphabetic()),
-    ))(i)
-}
-
-pub fn parse_macro_args(i: &str) -> IResult<&str, Vec<&str>> {
-    let (mut i, _) = tag(" ")(i)?;
-    let mut args = Vec::new();
-
-    loop {
-        if i.is_empty() {
-            break;
-        }
-
-        let (arg, local_i, terminate) = 'splitter: loop {
-            for (idx, ch) in i.char_indices() {
-                match ch {
-                    ' ' => {
-                        break 'splitter (&i[..idx], &i[(idx + 1)..], false);
-                    }
-                    '>' => {
-                        if i[idx..].starts_with(">>") {
-                            break 'splitter (&i[..idx], &i[idx..], true);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            break (i, "", true);
-        };
-
-        i = local_i;
-
-        args.push(arg);
-
-        if terminate {
-            break;
-        }
-    }
-
-    Ok((i, args))
-}
-
-/// Parse a macro
-pub(crate) fn parse_macro(i: &str) -> IResult<&str, Macro> {
-    map(
-        delimited(
-            context("missing `<<`", tag("<<")),
-            tuple((parse_macro_name, opt(parse_macro_args))),
-            context("missing `>>`", tag(">>")),
-        ),
-        |(name, args)| Macro {
-            name,
-            args: args.unwrap_or_else(Vec::new),
-        },
-    )(i)
-}
-
-/// Parse an expr
-fn parse_expr(i: &str) -> IResult<&str, Expr> {
-    alt((
-        parse_string_literal,
-        parse_integer_literal,
-        parse_ident,
-        parse_to_operator,
-    ))(i)
-}
-
-/// Parse string literal
-fn parse_string_literal(i: &str) -> IResult<&str, Expr> {
-    map(
-        alt((
-            delimited(char('"'), is_not("\""), char('"')),
-            delimited(char('\''), is_not("\'"), char('\'')),
-        )),
-        |value| Expr::StringLiteral { value },
-    )(i)
-}
-
-/// Parse an ident
-fn parse_ident(i: &str) -> IResult<&str, Expr> {
-    let (rest, value) = recognize(preceded(
-        char('$'),
-        take_while(|c: char| c.is_ascii_alphabetic()),
-    ))(i)?;
-
-    Ok((rest, Expr::Ident { value }))
-}
-
-/// Parse an integer literal
-fn parse_integer_literal(i: &str) -> IResult<&str, Expr> {
-    let (rest, n_str) = map_res(take_while(|c: char| c.is_ascii_digit()), |v: &str| {
-        v.parse()
-    })(i)?;
-    Ok((rest, Expr::IntegerLiteral { value: n_str }))
-}
-
-/// Parse a `to` operator
-fn parse_to_operator(i: &str) -> IResult<&str, Expr> {
-    let (rest, _) = tag("to")(i)?;
-    Ok((rest, Expr::ToOperator))
-}
-
-/// Parse content
-pub fn parse_content(input: &str) -> Result<Vec<Content>, nom::error::Error<&str>> {
-    let mut start = 0;
-    let mut iter = input.char_indices();
-    let mut content = Vec::new();
-
-    while let Some((i, ch)) = iter.next() {
-        if i < start {
-            continue;
-        }
-
-        match ch {
-            '<' => match parse_macro(&input[i..]) {
-                Ok((rest, macro_)) => {
-                    let text = &input[start..i];
-                    if !text.is_empty() {
-                        content.push(Content::Text { value: text });
-                    }
-                    content.push(Content::Macro { macro_ });
-
-                    start = i + (input[i..].len() - rest.len());
-                }
-                Err(_e) => {}
-            },
-            _ => {}
-        }
-    }
-
-    let text = &input[start..];
-    if !text.is_empty() {
-        content.push(Content::Text { value: text });
-    }
-
-    Ok(content)
 }
 
 /// An error occured while parsing
@@ -209,14 +32,74 @@ pub enum ParseError<'a> {
         expected: &'static str,
         actual: Option<&'a str>,
     },
+
+    /// Unknown Macro
+    #[error("the macro `{name}` is unknown")]
+    UnknownMacro { name: &'a str },
 }
 
 /// The parser context, where macros should be registered
-pub struct ParserContext {}
+#[derive(Debug, Clone)]
+pub struct ParserContext {
+    macro_defs: HashMap<String, MacroDef>,
+}
 
 impl ParserContext {
+    /// Make a new parser context, with default macros added.
     pub fn new() -> Self {
-        Self {}
+        let mut ctx = Self {
+            macro_defs: HashMap::new(),
+        };
+        let print_macro_def = MacroDef { tags: None };
+        ctx.add_macro_def("print".into(), print_macro_def.clone());
+        ctx.add_macro_def("-".into(), print_macro_def.clone());
+        ctx.add_macro_def("=".into(), print_macro_def);
+
+        ctx.add_macro_def("set".into(), MacroDef { tags: None });
+
+        ctx.add_macro_def(
+            "silently".into(),
+            MacroDef {
+                tags: Some(Vec::new()),
+            },
+        );
+
+        ctx
+    }
+
+    /// Add a macro def.
+    ///
+    /// # Panics
+    /// Panics if the macro is already defined.
+    pub fn add_macro_def(&mut self, name: String, def: MacroDef) {
+        self.macro_defs.insert(name, def);
+    }
+
+    /// Get a macro def
+    pub fn get_macro_def(&self, name: &str) -> Option<&MacroDef> {
+        self.macro_defs.get(name)
+    }
+}
+
+impl Default for ParserContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The def of a macro
+#[derive(Debug, Clone)]
+pub struct MacroDef {
+    /// An array of internal tags.
+    ///
+    /// Specifying this will make the macro non self-closing.
+    pub tags: Option<Vec<String>>,
+}
+
+impl MacroDef {
+    /// Returns `true` if this is self-closing
+    pub fn is_self_closing(&self) -> bool {
+        self.tags.is_none()
     }
 }
 
@@ -242,10 +125,12 @@ impl<'a, 'b> Parser<'a, 'b> {
         self.input.len() - self.chars.as_str().len()
     }
 
+    /*
     /// Get the next char
     fn next_ch(&mut self) -> Option<(usize, char)> {
         self.chars.next()
     }
+    */
 
     /// Peek the next char
     fn peek_ch(&mut self) -> Option<(usize, char)> {
@@ -262,6 +147,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Some(&self.input[start..=end])
     }
 
+    /*
     /// Get the next chars as a str while the chars pass the func
     fn next_while_str<F>(&mut self, func: F) -> Option<&'b str>
     where
@@ -279,6 +165,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         Some(&self.input[start..end])
     }
+    */
 
     /// Advance n chars.
     fn advance_n(&mut self, n: usize) {
@@ -294,7 +181,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         while let Some((i, ch)) = self.peek_ch() {
             match ch {
                 '<' => {
-                    if self.chars.as_str().starts_with('<') {
+                    if self.chars.as_str().starts_with("<<") {
                         let mut self_clone = self.clone();
                         match self_clone.parse_macro() {
                             Ok(macro_) => {
@@ -315,6 +202,8 @@ impl<'a, 'b> Parser<'a, 'b> {
                                 return Err(e);
                             }
                         };
+                    } else {
+                        self.advance_n(1);
                     }
                 }
                 _ => {
@@ -336,8 +225,12 @@ impl<'a, 'b> Parser<'a, 'b> {
             });
         }
 
-        // macro_name
+        // macro name
         let name = self.parse_macro_name()?;
+        let _macro_def = self
+            .ctx
+            .get_macro_def(name)
+            .ok_or(ParseError::UnknownMacro { name })?;
 
         // TODO: Conditionally attempt to parse args
         let mut args = Vec::new();
@@ -468,19 +361,6 @@ mod test {
         {
             let content = "<<= 'hello world'>>";
 
-            /*
-            let (rest, macro_) = parse_macro(content).expect("failed to parse");
-            dbg!(&macro_);
-            assert!(rest.is_empty());
-            assert!(
-                macro_
-                    == Macro {
-                        name: "=",
-                        args: vec!["'hello", "world'"],
-                    }
-            );
-            */
-
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
                 .parse_all_content()
@@ -497,18 +377,6 @@ mod test {
         {
             let content = "<<print 'hello world'>>";
 
-            /*
-            let (rest, macro_) = parse_macro(content).expect("failed to parse");
-            assert!(rest.is_empty());
-            assert!(
-                macro_
-                    == Macro {
-                        name: "print",
-                        args: vec!["'hello", "world'"]
-                    }
-            );
-            */
-
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
                 .parse_all_content()
@@ -524,18 +392,6 @@ mod test {
 
         {
             let content = "<<- 'hello world'>>";
-
-            /*
-            let (rest, macro_) = parse_macro(content).expect("failed to parse");
-            assert!(rest.is_empty());
-            assert!(
-                macro_
-                    == Macro {
-                        name: "-",
-                        args: vec!["'hello", "world'"]
-                    }
-            );
-            */
 
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
@@ -556,18 +412,6 @@ mod test {
         let ctx = ParserContext::new();
 
         let content = "<<set $name to 5>>";
-        /*
-        let (rest, macro_) = parse_macro(content).expect("failed to parse");
-        dbg!(&macro_);
-        assert!(rest.is_empty());
-        assert!(
-            macro_
-                == Macro {
-                    name: "set",
-                    args: vec!["$name", "to", "5"]
-                }
-        );
-        */
 
         let mut parser = Parser::new(&ctx, &content);
         let content = parser
@@ -584,23 +428,12 @@ mod test {
 
     #[test]
     fn parse_macros() {
-        let ctx = ParserContext::new();
+        let mut ctx = ParserContext::new();
+        ctx.add_macro_def("talkr".into(), MacroDef { tags: None });
 
         // TODO: This should be a container
         {
             let content = "<<silently>>";
-
-            /*
-            let (rest, macro_) = parse_macro(content).expect("failed to parse");
-            assert!(rest.is_empty());
-            assert!(
-                macro_
-                    == Macro {
-                        name: "silently",
-                        args: vec![]
-                    }
-            );
-            */
 
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
@@ -617,11 +450,6 @@ mod test {
 
         {
             let content = "<<talkr \"https://talkrapp.com/apngdemo/apng/morpheus.png\" en male 0>>";
-
-            /*
-            let (rest, macro_) = parse_macro(content).expect("failed to parse");
-            assert!(rest.is_empty());
-            */
 
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
@@ -649,9 +477,6 @@ mod test {
         {
             let content = "<<set $name to 5>>Hello<<- $name>>";
 
-            /*
-            let content = parse_content(content).expect("failed to parse");
-            */
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
                 .parse_all_content()

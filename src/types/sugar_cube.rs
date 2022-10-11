@@ -1,3 +1,5 @@
 mod parser;
 
-pub use self::parser::parse_content;
+pub use self::parser::MacroDef;
+pub use self::parser::Parser;
+pub use self::parser::ParserContext;
