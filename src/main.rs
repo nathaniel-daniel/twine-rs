@@ -136,16 +136,20 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
 
                             for passage in story.passages.iter() {
                                 let parser_ctx = ParserContext::new();
-                                let content = Parser::new(&parser_ctx, passage.content.as_str())
-                                    .parse_all_content()
-                                    .map_err(|e| anyhow!(e.to_string()))
-                                    .context("failed to parse content")?;
+                                let mut content_list =
+                                    Parser::new(&parser_ctx, passage.content.as_str())
+                                        .parse_all_content()
+                                        .map_err(|e| anyhow!(e.to_string()))
+                                        .context("failed to parse content")?;
 
-                                for content in content {
+                                while let Some(content) = content_list.pop() {
                                     match content {
                                         SugarCubeContent::Image { image } => {
                                             println!("Found Image: `{}`", image.image);
                                             resources.push(image.image.to_string());
+                                        }
+                                        SugarCubeContent::Macro { macro_ } => {
+                                            content_list.extend(macro_.content);
                                         }
                                         _ => {}
                                     }

@@ -68,3 +68,13 @@
 
     Ok(())
 }
+
+/*
+# Optional
+cssparser = { version = "0.27.2", optional = true }
+
+[features]
+cli = [
+    "cssparser",
+]
+*/
