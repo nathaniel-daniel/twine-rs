@@ -45,7 +45,7 @@ mod test {
             let mut ctx = ParserContext::new();
             ctx.add_macro_def("talkr".into(), MacroDef { tags: None });
 
-            for passage in story.passages.iter().take(1000000) {
+            for passage in story.passages.iter() {
                 dbg!(&passage.content);
 
                 let mut parser = Parser::new(&ctx, &passage.content);

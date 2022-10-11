@@ -10,6 +10,9 @@ pub struct Macro<'a> {
 
     /// Macro arguments
     pub args: Vec<&'a str>,
+
+    /// Macro content
+    pub content: Vec<Content<'a>>,
 }
 
 /// A closing Macro
@@ -24,7 +27,6 @@ pub struct CloseMacro<'a> {
 pub enum Content<'a> {
     Text { value: &'a str },
     Macro { macro_: Macro<'a> },
-    CloseMacro { macro_: CloseMacro<'a> },
 }
 
 /// An error occured while parsing
@@ -191,28 +193,6 @@ impl<'a, 'b> Parser<'a, 'b> {
         while let Some((i, ch)) = self.peek_ch() {
             match ch {
                 '<' => {
-                    if self.chars.as_str().starts_with("<</") {
-                        let mut self_clone = self.clone();
-                        match self_clone.parse_close_macro() {
-                            Ok(macro_) => {
-                                // Push the text block we were working on
-                                let text = &self.input[start..i];
-                                if !text.is_empty() {
-                                    content.push(Content::Text { value: text });
-                                }
-
-                                // Skip the amount the macro parser ate.
-                                self.advance_n(self_clone.get_cur_pos() - self.get_cur_pos());
-                                content.push(Content::CloseMacro { macro_ });
-
-                                // Set the start of the next text block.
-                                start = self.get_cur_pos();
-                            }
-                            Err(e) => {
-                                return Err(e);
-                            }
-                        }
-                    }
                     if self.chars.as_str().starts_with("<<") {
                         let mut self_clone = self.clone();
                         match self_clone.parse_macro() {
@@ -224,7 +204,12 @@ impl<'a, 'b> Parser<'a, 'b> {
                                 }
 
                                 // Skip the amount the macro parser ate.
-                                self.advance_n(self_clone.get_cur_pos() - self.get_cur_pos());
+                                while let Some((i, _ch)) = self.peek_ch() {
+                                    if i == self_clone.get_cur_pos() {
+                                        break;
+                                    }
+                                    self.advance_n(1);
+                                }
                                 content.push(Content::Macro { macro_ });
 
                                 // Set the start of the next text block.
@@ -238,6 +223,9 @@ impl<'a, 'b> Parser<'a, 'b> {
                         self.advance_n(1);
                     }
                 }
+                // '[' => {
+                //     todo!();
+                // }
                 _ => {
                     self.advance_n(1);
                 }
@@ -265,77 +253,16 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         // macro name
         let name = self.parse_macro_name()?;
+
+        // TODO: If we are missing the macro def,
+        // try to guess what it is.
         let _macro_def = self
             .ctx
             .get_macro_def(name)
             .ok_or(ParseError::UnknownMacro { name })?;
 
-        // TODO: Conditionally attempt to parse args
-        let mut args = Vec::new();
-        {
-            let peek_buf = self
-                .clone()
-                .next_n_str(2)
-                .ok_or(ParseError::UnexpectedEof)?;
-            let peek_buf_bytes = peek_buf.as_bytes();
-            match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
-                (Some(b' '), _) => {
-                    self.advance_n(1);
-                }
-                (Some(b'>'), Some(b'>')) => {
-                    self.advance_n(2);
-                    return Ok(Macro { name, args });
-                }
-                _ => {
-                    return Err(ParseError::Unexpected {
-                        expected: " ",
-                        actual: Some(&peek_buf[..1]),
-                    });
-                }
-            }
-
-            'main: loop {
-                // Read arg
-                let start = self.get_cur_pos();
-                loop {
-                    let peek_buf = self
-                        .clone()
-                        .next_n_str(2)
-                        .ok_or(ParseError::UnexpectedEof)?;
-                    let peek_buf_bytes = peek_buf.as_bytes();
-
-                    match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
-                        (Some(b' '), _) => {
-                            let end = self.get_cur_pos();
-                            args.push(&self.input[start..end]);
-
-                            break;
-                        }
-                        (Some(b'>'), Some(b'>')) => {
-                            let end = self.get_cur_pos();
-                            args.push(&self.input[start..end]);
-
-                            break 'main;
-                        }
-                        (Some(_), Some(b' ' | b'>')) => {
-                            self.advance_n(1);
-                        }
-                        (_, _) => {
-                            self.advance_n(2);
-                        }
-                    }
-                }
-
-                // Read space
-                let space = self.next_n_str(1).ok_or(ParseError::UnexpectedEof)?;
-                if space != " " {
-                    return Err(ParseError::Unexpected {
-                        expected: " ",
-                        actual: Some(space),
-                    });
-                }
-            }
-        }
+        // TODO: Conditionally attempt to parse args?
+        let args = self.parse_macro_args()?;
 
         // >>
         let rmacro = self.next_n_str(2).ok_or(ParseError::UnexpectedEof)?;
@@ -346,7 +273,30 @@ impl<'a, 'b> Parser<'a, 'b> {
             });
         }
 
-        Ok(Macro { name, args })
+        let mut content = Vec::new();
+
+        // Try to find closing tag
+        let closing_tag_index = self.chars.as_str().find(&format!("<</{name}>>"));
+        if let Some(closing_tag_index) = closing_tag_index {
+            let mut parser = Parser::new(self.ctx, &self.chars.as_str()[..closing_tag_index]);
+            content = parser.parse_all_content()?;
+            let resume_index = self.get_cur_pos() + closing_tag_index;
+            while let Some((i, _ch)) = self.peek_ch() {
+                if i == resume_index {
+                    break;
+                }
+                self.advance_n(1);
+            }
+
+            // Consume close macro tag
+            let _close_macro = self.parse_close_macro()?;
+        }
+
+        Ok(Macro {
+            name,
+            args,
+            content,
+        })
     }
 
     fn parse_close_macro(&mut self) -> Result<CloseMacro<'b>, ParseError<'b>> {
@@ -411,6 +361,74 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         Ok(name)
     }
+
+    fn parse_macro_args(&mut self) -> Result<Vec<&'b str>, ParseError<'b>> {
+        let mut args = Vec::new();
+
+        let peek_buf = self
+            .clone()
+            .next_n_str(2)
+            .ok_or(ParseError::UnexpectedEof)?;
+        let peek_buf_bytes = peek_buf.as_bytes();
+        match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+            (Some(b' '), _) => {
+                self.advance_n(1);
+            }
+            (Some(b'>'), Some(b'>')) => {
+                // self.advance_n(2);
+                return Ok(args);
+            }
+            _ => {
+                return Err(ParseError::Unexpected {
+                    expected: " ",
+                    actual: Some(peek_buf),
+                });
+            }
+        }
+
+        'main: loop {
+            // Read arg
+            let start = self.get_cur_pos();
+            loop {
+                let peek_buf = self
+                    .clone()
+                    .next_n_str(2)
+                    .ok_or(ParseError::UnexpectedEof)?;
+                let peek_buf_bytes = peek_buf.as_bytes();
+
+                match (peek_buf_bytes.get(0), peek_buf_bytes.get(1)) {
+                    (Some(b' '), _) => {
+                        let end = self.get_cur_pos();
+                        args.push(&self.input[start..end]);
+                        break;
+                    }
+                    (Some(b'>'), Some(b'>')) => {
+                        let end = self.get_cur_pos();
+                        args.push(&self.input[start..end]);
+
+                        break 'main;
+                    }
+                    (Some(_), Some(b' ' | b'>')) => {
+                        self.advance_n(1);
+                    }
+                    (_, _) => {
+                        self.advance_n(2);
+                    }
+                }
+            }
+
+            // Read space
+            let space = self.next_n_str(1).ok_or(ParseError::UnexpectedEof)?;
+            if space != " " {
+                return Err(ParseError::Unexpected {
+                    expected: " ",
+                    actual: Some(space),
+                });
+            }
+        }
+
+        Ok(args)
+    }
 }
 
 #[cfg(test)]
@@ -431,6 +449,7 @@ mod test {
                 macro_: Macro {
                     name: "=",
                     args: vec!["'hello", "world'"],
+                    content: vec![],
                 },
             }];
             assert!(content == expected);
@@ -447,6 +466,7 @@ mod test {
                 macro_: Macro {
                     name: "print",
                     args: vec!["'hello", "world'"],
+                    content: vec![],
                 },
             }];
             assert!(content == expected);
@@ -463,6 +483,7 @@ mod test {
                 macro_: Macro {
                     name: "-",
                     args: vec!["'hello", "world'"],
+                    content: vec![],
                 },
             }];
             assert!(content == expected);
@@ -483,6 +504,7 @@ mod test {
             macro_: Macro {
                 name: "set",
                 args: vec!["$name", "to", "5"],
+                content: vec![],
             },
         }];
         assert!(content == expected);
@@ -495,7 +517,7 @@ mod test {
 
         // TODO: This should be a container
         {
-            let content = "<<silently>>";
+            let content = "<<silently>><</silently>>"; // <</silently>>
 
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
@@ -505,30 +527,39 @@ mod test {
                 macro_: Macro {
                     name: "silently",
                     args: vec![],
+                    content: vec![],
                 },
             }];
-            assert!(content == expected);
+            assert!(
+                content == expected,
+                "(content) {content:#?} != (expected) {expected:#?}"
+            );
         }
 
         {
-            let content = "<<talkr \"https://talkrapp.com/apngdemo/apng/morpheus.png\" en male 0>>";
+            let content =
+                "<<talkr \"https://talkrapp.com/apngdemo/apng/morpheus.png\" en male 0>><</talkr>>more text";
 
             let mut parser = Parser::new(&ctx, &content);
             let content = parser
                 .parse_all_content()
                 .expect("failed to parse all content");
-            let expected = vec![Content::Macro {
-                macro_: Macro {
-                    name: "talkr",
-                    args: vec![
-                        "\"https://talkrapp.com/apngdemo/apng/morpheus.png\"",
-                        "en",
-                        "male",
-                        "0",
-                    ],
+            let expected = vec![
+                Content::Macro {
+                    macro_: Macro {
+                        name: "talkr",
+                        args: vec![
+                            "\"https://talkrapp.com/apngdemo/apng/morpheus.png\"",
+                            "en",
+                            "male",
+                            "0",
+                        ],
+                        content: vec![],
+                    },
                 },
-            }];
-            assert!(content == expected);
+                Content::Text { value: "more text" },
+            ];
+            assert!(content == expected, "{content:#?} != {expected:#?}");
         }
     }
 
@@ -550,6 +581,7 @@ mod test {
                     macro_: Macro {
                         name: "set",
                         args: vec!["$name", "to", "5"],
+                        content: vec![],
                     },
                 },
                 Content::Text { value: "Hello" },
@@ -557,6 +589,7 @@ mod test {
                     macro_: Macro {
                         name: "-",
                         args: vec!["$name"],
+                        content: vec![],
                     },
                 },
             ];
