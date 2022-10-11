@@ -30,12 +30,22 @@ mod test {
         assert!(story.zoom.as_deref() == Some("1"));
         assert!(story.creator.as_deref() == Some("Twine"));
         assert!(story.creator_version.as_deref() == Some("2.2.1"));
+        assert!(story.passages.len() == 10);
 
         assert!(matches!(
             story.parse_format(),
             Some(Ok(ParsedStoryFormat::SugarCube))
         ));
 
-        dbg!(&story);
+        {
+            for passage in story.passages.iter().take(1) {
+                dbg!(&passage.content);
+                let content = self::types::sugar_cube::parse_content(&passage.content)
+                    .expect("failed to parse");
+                dbg!(content);
+            }
+        }
+
+        // dbg!(&story);
     }
 }
