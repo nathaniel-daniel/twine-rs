@@ -217,7 +217,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                         .context("failed to open tmp file")?;
                     let mut tmp_path = pikadick_util::DropRemovePath::new(tmp_path);
 
-                    pikadick_util::download_to_file(&client, url.as_str(), &mut file)
+                    nd_util::download_to_file(&client, url.as_str(), &mut file)
                         .await
                         .context("failed to download to file")?;
                     tokio::fs::rename(&tmp_path, path)
