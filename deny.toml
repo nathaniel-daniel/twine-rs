@@ -34,6 +34,9 @@ skip = [
     { name = "phf_codegen", version = "0.8.0" },
     { name = "phf", version = "0.8.0" },
     { name = "itoa", version = "0.4.8" },
+    { name = "windows-sys", version = "0.36.1" },
+    { name = "windows-sys", version = "0.42.0" },
+    { name = "windows_x86_64_msvc", version = "0.36.1" },
 ]
 
 # Mostly soundness denies since the advisory lacks a section for soundess bugs
@@ -70,4 +73,5 @@ unknown-git = "deny"
 allow-registry = [ "https://github.com/rust-lang/crates.io-index" ]
 allow-git = [
     "https://github.com/ThatAnnoyingKid/pikadick-rs",
+    "https://github.com/nathaniel-daniel/nd-util-rs",
 ]

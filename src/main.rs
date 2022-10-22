@@ -101,7 +101,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                 .context("failed to create out dir")?;
             {
                 let path = options.out_dir.join(html_file_name);
-                let tmp_path = pikadick_util::with_push_extension(&path, "part");
+                let tmp_path = nd_util::with_push_extension(&path, "part");
 
                 let mut file = tokio::fs::OpenOptions::new()
                     .create_new(true)
@@ -109,7 +109,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                     .open(&tmp_path)
                     .await
                     .context("failed to open tmp file")?;
-                let mut tmp_path = pikadick_util::DropRemovePath::new(tmp_path);
+                let mut tmp_path = nd_util::DropRemovePath::new(tmp_path);
 
                 file.write_all(html.as_bytes()).await?;
                 file.flush().await?;
@@ -207,7 +207,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                         }
                     }
 
-                    let tmp_path = pikadick_util::with_push_extension(&path, "part");
+                    let tmp_path = nd_util::with_push_extension(&path, "part");
 
                     let mut file = tokio::fs::OpenOptions::new()
                         .create_new(true)
@@ -215,9 +215,9 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                         .open(&tmp_path)
                         .await
                         .context("failed to open tmp file")?;
-                    let mut tmp_path = pikadick_util::DropRemovePath::new(tmp_path);
+                    let mut tmp_path = nd_util::DropRemovePath::new(tmp_path);
 
-                    pikadick_util::download_to_file(&client, url.as_str(), &mut file)
+                    nd_util::download_to_file(&client, url.as_str(), &mut file)
                         .await
                         .context("failed to download to file")?;
                     tokio::fs::rename(&tmp_path, path)
