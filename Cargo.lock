@@ -588,11 +588,12 @@ dependencies = [
 [[package]]
 name = "nd-util"
 version = "0.0.0"
-source = "git+https://github.com/nathaniel-daniel/nd-util-rs#b9a30a5a989e1b00d058dccf27ff43535305a828"
+source = "git+https://github.com/nathaniel-daniel/nd-util-rs#3ad5502bfd10e590d73c74b8ff41daf229babcb1"
 dependencies = [
  "anyhow",
  "reqwest",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -787,15 +788,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6796ad771acdc0123d2a88dc428b5e38ef24456743ddb1744ed628f9815c096"
 dependencies = [
  "siphasher",
-]
-
-[[package]]
-name = "pikadick-util"
-version = "0.0.0"
-source = "git+https://github.com/ThatAnnoyingKid/pikadick-rs#4e2b21ecdf3a198b70886de76a3000c9eeae1057"
-dependencies = [
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -1372,7 +1364,6 @@ dependencies = [
  "argh",
  "nd-util",
  "once_cell",
- "pikadick-util",
  "regex",
  "reqwest",
  "scraper",
