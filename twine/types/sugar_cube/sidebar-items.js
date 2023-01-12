@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["Content","Content"]],"struct":[["MacroDef","The def of a macro"],["Parser","The content parser"],["ParserContext","The parser context, where macros should be registered"]]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":[["story","Story type"],["sugar_cube","SugarCube"]]};

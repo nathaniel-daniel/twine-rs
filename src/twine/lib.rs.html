@@ -1,0 +1,122 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../twine/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../twine/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../twine/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+</pre><pre class="rust"><code><span class="doccomment">/// Types
+</span><span class="kw">pub mod </span>types;
+
+<span class="kw">pub use </span><span class="kw">crate</span>::types::ParsedStoryFormat;
+<span class="kw">pub use </span><span class="kw">crate</span>::types::Twine2Passage;
+<span class="kw">pub use </span><span class="kw">crate</span>::types::Twine2Story;
+
+<span class="doccomment">/// Library error type
+</span><span class="attribute">#[derive(Debug, thiserror::Error)]
+</span><span class="kw">pub enum </span>Error {
+    <span class="attribute">#[error(<span class="string">&quot;invalid twine2 story&quot;</span>)]
+    </span>InvalidTwine2Story(<span class="attribute">#[from] </span><span class="kw">crate</span>::types::story::FromHtmlError),
+}
+
+<span class="attribute">#[cfg(test)]
+</span><span class="kw">mod </span>test {
+    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+
+    <span class="doccomment">/// https://talkrapp.com/apngdemo/index.html
+    </span><span class="kw">const </span>TEST_1: <span class="kw-2">&amp;</span>str = <span class="macro">include_str!</span>(<span class="string">&quot;../test_data/talkrapp_com_apngdemo_index_html.html&quot;</span>);
+
+    <span class="attribute">#[test]
+    </span><span class="kw">fn </span>test_1_parse() {
+        <span class="kw">let </span>story = Twine2Story::from_html(TEST_1).expect(<span class="string">&quot;failed to parse TEST_1&quot;</span>);
+        <span class="macro">assert!</span>(story.name == <span class="string">&quot;Talkr SugarCube Demo&quot;</span>);
+        <span class="macro">assert!</span>(story.ifid == <span class="string">&quot;5AFA83C5-4D61-438D-AE9B-23A3EDABBF49&quot;</span>);
+        <span class="macro">assert!</span>(story.format.as_deref() == <span class="prelude-val">Some</span>(<span class="string">&quot;SugarCube&quot;</span>));
+        <span class="macro">assert!</span>(story.format_version.as_deref() == <span class="prelude-val">Some</span>(<span class="string">&quot;2.21.0&quot;</span>));
+        <span class="macro">assert!</span>(story.startnode.as_deref() == <span class="prelude-val">Some</span>(<span class="string">&quot;1&quot;</span>));
+        <span class="macro">assert!</span>(story.zoom.as_deref() == <span class="prelude-val">Some</span>(<span class="string">&quot;1&quot;</span>));
+        <span class="macro">assert!</span>(story.creator.as_deref() == <span class="prelude-val">Some</span>(<span class="string">&quot;Twine&quot;</span>));
+        <span class="macro">assert!</span>(story.creator_version.as_deref() == <span class="prelude-val">Some</span>(<span class="string">&quot;2.2.1&quot;</span>));
+        <span class="macro">assert!</span>(story.passages.len() == <span class="number">10</span>);
+
+        <span class="macro">assert!</span>(<span class="macro">matches!</span>(
+            story.parse_format(),
+            <span class="prelude-val">Some</span>(<span class="prelude-val">Ok</span>(ParsedStoryFormat::SugarCube))
+        ));
+
+        {
+            <span class="kw">use </span><span class="self">self</span>::types::sugar_cube::MacroDef;
+            <span class="kw">use </span><span class="self">self</span>::types::sugar_cube::Parser;
+            <span class="kw">use </span><span class="self">self</span>::types::sugar_cube::ParserContext;
+
+            <span class="kw">let </span><span class="kw-2">mut </span>ctx = ParserContext::new();
+            ctx.add_macro_def(<span class="string">&quot;talkr&quot;</span>.into(), MacroDef { tags: <span class="prelude-val">None </span>});
+
+            <span class="kw">for </span>passage <span class="kw">in </span>story.passages.iter() {
+                <span class="macro">dbg!</span>(<span class="kw-2">&amp;</span>passage.content);
+
+                <span class="kw">let </span><span class="kw-2">mut </span>parser = Parser::new(<span class="kw-2">&amp;</span>ctx, <span class="kw-2">&amp;</span>passage.content);
+
+                <span class="kw">let </span>content = parser.parse_all_content().expect(<span class="string">&quot;failed to parse&quot;</span>);
+                <span class="macro">dbg!</span>(content);
+            }
+        }
+
+        <span class="comment">// dbg!(&amp;story);
+    </span>}
+}
+</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="twine" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.65.0 (897e37553 2022-11-02)" ></div></body></html>
