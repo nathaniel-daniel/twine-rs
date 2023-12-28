@@ -144,7 +144,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                                 while let Some(content) = content_list.pop() {
                                     match content {
                                         SugarCubeContent::Image { image } => {
-                                            println!("Found Image: `{}`", image.image);
+                                            println!("Found Image: \"{}\"", image.image);
                                             resources.push(image.image.to_string());
                                         }
                                         SugarCubeContent::Macro { macro_ } => {
@@ -157,10 +157,11 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                         }
                         ParsedStoryFormat::Harlowe => {
                             println!("Warning: This format is experimental");
-                            
+
                             for passage in story.passages.iter() {
-                                dbg!(passage);
-                                break;
+                                let parsed = harlowe::parse(passage.content.as_str())
+                                    .map_err(|error| anyhow!(error.to_string()))?;
+                                dbg!(parsed);
                             }
                         }
                     }

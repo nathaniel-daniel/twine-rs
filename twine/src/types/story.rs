@@ -269,7 +269,7 @@ impl std::fmt::Display for FromStrError {
 pub enum ParsedStoryFormat {
     /// The Sugar Cube format
     SugarCube,
-    
+
     /// The Harlowe format
     Harlowe,
 }

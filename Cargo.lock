@@ -1491,6 +1491,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "argh",
+ "harlowe",
  "nd-util",
  "once_cell",
  "regex",
