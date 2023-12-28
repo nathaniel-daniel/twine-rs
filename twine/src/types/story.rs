@@ -241,10 +241,7 @@ impl Twine2Passage {
             .transpose()?;
 
         // If there is no text, the passage is empty.
-        let content = element
-            .text()
-            .next()
-            .unwrap_or("").to_string();
+        let content = element.text().next().unwrap_or("").to_string();
 
         Ok(Self {
             pid,
