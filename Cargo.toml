@@ -1,8 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "twine"
-, "twine-cli"]
+    "twine", 
+    "twine-cli",
+]
 
 [profile.release]
 lto = "fat"
