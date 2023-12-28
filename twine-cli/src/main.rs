@@ -3,6 +3,7 @@ use anyhow::Context;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use scraper::Selector;
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use twine::types::sugar_cube::Content as SugarCubeContent;
@@ -218,34 +219,44 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                 }
             }
 
-            for resource in resources {
+            let mut last_error = Ok(());
+            for resource in resources.iter() {
                 println!("Downloading \"{resource}\"...");
-                
-                let url = base_url.join(&resource).context("invalid url")?;
-                let path = options.out_dir.join(&resource);
 
-                if let Some(path_parent) = path.parent() {
-                    tokio::fs::create_dir_all(&path_parent)
-                        .await
-                        .with_context(|| {
-                            format!("failed to create dir \"{}\"", path_parent.display())
-                        })?;
-                }
-                
-                {
-                    if tokio::fs::try_exists(&path)
-                        .await
-                        .context("failed to stat file")?
-                    {
-                        println!("  File exists, skipping...");
-                        continue;
+                let url = base_url.join(resource).context("invalid url")?;
+                let path = options.out_dir.join(resource);
+
+                match download_resource(&client, url, &path).await {
+                    Ok(()) => {}
+                    Err(error) => {
+                        println!("Error: {error:?}");
+                        last_error = Err(error);
                     }
-
-                    nd_util::download_to_path(&client, url.as_str(), &path).await?;
                 }
             }
+            last_error?;
         }
     }
-    
+
+    Ok(())
+}
+
+async fn download_resource(client: &reqwest::Client, url: Url, path: &Path) -> anyhow::Result<()> {
+    if let Some(path_parent) = path.parent() {
+        tokio::fs::create_dir_all(&path_parent)
+            .await
+            .with_context(|| format!("failed to create dir \"{}\"", path_parent.display()))?;
+    }
+
+    if tokio::fs::try_exists(&path)
+        .await
+        .context("failed to stat file")?
+    {
+        println!("  File exists, skipping...");
+        return Ok(());
+    }
+
+    nd_util::download_to_path(client, url.as_str(), &path).await?;
+
     Ok(())
 }
