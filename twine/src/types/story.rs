@@ -171,9 +171,6 @@ pub enum FromElementError {
 
     #[error("invalid y size")]
     InvalidHeightSize(std::num::ParseIntError),
-
-    #[error("missing content")]
-    MissingContent,
 }
 
 /// A twine2 passage
@@ -243,11 +240,11 @@ impl Twine2Passage {
             })
             .transpose()?;
 
+        // If there is no text, the passage is empty.
         let content = element
             .text()
             .next()
-            .ok_or(FromElementError::MissingContent)?
-            .to_string();
+            .unwrap_or("").to_string();
 
         Ok(Self {
             pid,
@@ -266,7 +263,7 @@ pub struct FromStrError(String);
 
 impl std::fmt::Display for FromStrError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "`{}` is not a valid story format", self.0)
+        write!(f, "\"{}\" is not a valid story format", self.0)
     }
 }
 
