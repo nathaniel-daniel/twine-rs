@@ -2,6 +2,8 @@ use anyhow::anyhow;
 use anyhow::Context;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use scraper::Selector;
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use twine::types::sugar_cube::Content as SugarCubeContent;
@@ -144,7 +146,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                                 while let Some(content) = content_list.pop() {
                                     match content {
                                         SugarCubeContent::Image { image } => {
-                                            println!("Found Image: `{}`", image.image);
+                                            println!("Found Image: \"{}\"", image.image);
                                             resources.push(image.image.to_string());
                                         }
                                         SugarCubeContent::Macro { macro_ } => {
@@ -155,10 +157,46 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                                 }
                             }
                         }
+                        ParsedStoryFormat::Harlowe => {
+                            static IMG_SELECTOR: Lazy<Selector> =
+                                Lazy::new(|| Selector::parse("img").unwrap());
+
+                            for passage in story.passages.iter() {
+                                let parsed = harlowe::parse(passage.content.as_str())
+                                    .map_err(|error| anyhow!(error.to_string()))?;
+
+                                for expr in parsed {
+                                    let text = match expr {
+                                        harlowe::Expr::Text(text) => text,
+                                        harlowe::Expr::Hook(text) => text,
+                                        _ => continue,
+                                    };
+
+                                    let html = scraper::Html::parse_fragment(text);
+
+                                    for img in html.select(&IMG_SELECTOR) {
+                                        let src = match img.attr("src") {
+                                            Some(src) => src,
+                                            None => continue,
+                                        };
+
+                                        // TODO: I don't really know a good way to handle this without rewriting the html directly.
+                                        if src.starts_with("https://") {
+                                            println!(
+                                                "Warning: Skipping absolute url image resource"
+                                            );
+                                            continue;
+                                        }
+
+                                        resources.push(src.to_string());
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                Some(Err(e)) => {
-                    println!("Warning: Unknown story format `{e}`");
+                Some(Err(story_format)) => {
+                    println!("Warning: Unknown story format \"{story_format}\"");
                 }
                 None => {
                     println!("Warning: Story is missing a format");
@@ -173,60 +211,52 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                 static CSS_URL_REGEX: Lazy<Regex> =
                     Lazy::new(|| Regex::new(r#"url\((.*)\);"#).unwrap());
                 println!("Warning: Story stylesheet parser only recognizes url() values");
-                let captures = CSS_URL_REGEX.captures_iter(dbg!(css));
+                let captures = CSS_URL_REGEX.captures_iter(css);
                 for capture in captures {
                     let url = &capture[1];
-                    println!("Found CSS resource: `{}`", url);
+                    println!("Found CSS resource: \"{url}\"");
                     resources.push(url.to_string());
                 }
             }
 
-            for resource in resources {
-                let url = base_url.join(&resource).context("invalid url")?;
-                let path = options.out_dir.join(&resource);
+            let mut last_error = Ok(());
+            for resource in resources.iter() {
+                println!("Downloading \"{resource}\"...");
 
-                if let Some(path_parent) = path.parent() {
-                    tokio::fs::create_dir_all(&path_parent)
-                        .await
-                        .context("failed to create dir")?;
-                }
+                let url = base_url.join(resource).context("invalid url")?;
+                let path = options.out_dir.join(resource);
 
-                println!("Downloading `{}`...", resource);
-                {
-                    match tokio::fs::metadata(&path).await {
-                        Ok(_metadata) => {
-                            println!("  File exists, skipping...");
-                            continue;
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                            // Pass
-                        }
-                        Err(e) => {
-                            return Err(e).context("failed to stat file");
-                        }
+                match download_resource(&client, url, &path).await {
+                    Ok(()) => {}
+                    Err(error) => {
+                        println!("Error: {error:?}");
+                        last_error = Err(error);
                     }
-
-                    let tmp_path = nd_util::with_push_extension(&path, "part");
-
-                    let mut file = tokio::fs::OpenOptions::new()
-                        .create_new(true)
-                        .write(true)
-                        .open(&tmp_path)
-                        .await
-                        .context("failed to open tmp file")?;
-                    let mut tmp_path = nd_util::DropRemovePath::new(tmp_path);
-
-                    nd_util::download_to_file(&client, url.as_str(), &mut file)
-                        .await
-                        .context("failed to download to file")?;
-                    tokio::fs::rename(&tmp_path, path)
-                        .await
-                        .context("failed to rename path")?;
-
-                    tmp_path.persist();
                 }
             }
+            last_error?;
         }
     }
+
+    Ok(())
+}
+
+async fn download_resource(client: &reqwest::Client, url: Url, path: &Path) -> anyhow::Result<()> {
+    if let Some(path_parent) = path.parent() {
+        tokio::fs::create_dir_all(&path_parent)
+            .await
+            .with_context(|| format!("failed to create dir \"{}\"", path_parent.display()))?;
+    }
+
+    if tokio::fs::try_exists(&path)
+        .await
+        .context("failed to stat file")?
+    {
+        println!("  File exists, skipping...");
+        return Ok(());
+    }
+
+    nd_util::download_to_path(client, url.as_str(), &path).await?;
+
     Ok(())
 }

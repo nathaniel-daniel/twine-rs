@@ -1,8 +1,9 @@
 [workspace]
 resolver = "2"
-members = [
+members = [ 
     "twine", 
     "twine-cli",
+    "harlowe",
 ]
 
 [profile.release]
