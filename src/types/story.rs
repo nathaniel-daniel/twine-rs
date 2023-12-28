@@ -219,7 +219,7 @@ impl Twine2Passage {
                     .map(|v| v.to_string())
                     .collect()
             })
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
         let position = el_value
             .attr("position")
             .map(|position| {
