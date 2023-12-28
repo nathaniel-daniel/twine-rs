@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"twine":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.74.1/core/default/trait.Default.html\" title=\"trait core::default::Default\">Default</a> for <a class=\"struct\" href=\"twine/types/sugar_cube/struct.ParserContext.html\" title=\"struct twine::types::sugar_cube::ParserContext\">ParserContext</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

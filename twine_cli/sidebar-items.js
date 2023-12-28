@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Subcommand"],"fn":["async_main","download_resource","main"],"struct":["DownloadHtmlOptions","Options"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Expr"],"fn":["parse"],"struct":["MacroExpr"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["FromElementError","FromHtmlError","ParsedStoryFormat"],"struct":["FromStrError","Twine2Passage","Twine2Story"]};
