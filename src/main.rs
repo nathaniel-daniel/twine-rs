@@ -91,8 +91,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                 .url
                 .path_segments()
                 .context("missing path")?
-                .rev()
-                .next()
+                .next_back()
                 .context("missing file name")?;
 
             println!("Saving html...");
