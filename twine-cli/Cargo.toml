@@ -7,11 +7,12 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 anyhow = "1.0.77"
 argh = "0.1.12"
-nd-util = { git = "https://github.com/nathaniel-daniel/nd-util-rs", features = [ "download-to-file", "drop-remove-path" ] }
+nd-util = { git = "https://github.com/nathaniel-daniel/nd-util-rs", features = [ "download-to-path", "drop-remove-path" ] }
 harlowe = { path = "../harlowe" }
 once_cell = "1.19.0"
 regex = "1.10.2"
 reqwest = { version = "0.11.23" }
+scraper = { version = "0.18.1", default-features = false }
 tokio = { version = "1.35.1", features = ["rt-multi-thread"] }
 twine = { path = "../twine" }
 url = "2.5.0"

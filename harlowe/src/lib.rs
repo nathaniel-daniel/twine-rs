@@ -17,6 +17,7 @@ use winnow::Parser;
 pub enum Expr<'a> {
     Macro(MacroExpr<'a>),
     Text(&'a str),
+    Hook(&'a str),
 }
 
 /// A harlowe macro expression
@@ -32,6 +33,7 @@ pub fn parse(input: &str) -> Result<Vec<Expr>, ParseError<&str, ContextError>> {
         0..,
         alt((
             macro_.map(Expr::Macro).context(StrContext::Label("macro")),
+            hook.map(Expr::Hook).context(StrContext::Label("hook")),
             text.map(Expr::Text).context(StrContext::Label("text")),
         )),
     )
@@ -59,6 +61,14 @@ fn text<'a>(input: &mut &'a str) -> PResult<&'a str> {
         .parse_next(input)
 }
 
+fn hook<'a>(input: &mut &'a str) -> PResult<&'a str> {
+    '['.parse_next(input)?;
+    let content = take_till(1.., |c| c == ']').parse_next(input)?;
+    ']'.parse_next(input)?;
+
+    Ok(content)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -70,6 +80,7 @@ mod test {
             "(set:$value to 45 )",
             "(set:$value to 0 )(set:$value to 1)",
             "(print: 54) hello there!",
+            "[basic hook]",
         ];
         for content in content {
             let parsed = parse(content).expect("failed to parse");
