@@ -269,6 +269,9 @@ impl std::fmt::Display for FromStrError {
 pub enum ParsedStoryFormat {
     /// The Sugar Cube format
     SugarCube,
+    
+    /// The Harlowe format
+    Harlowe,
 }
 
 impl FromStr for ParsedStoryFormat {
@@ -277,6 +280,7 @@ impl FromStr for ParsedStoryFormat {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input {
             "SugarCube" => Ok(Self::SugarCube),
+            "Harlowe" => Ok(Self::Harlowe),
             _ => Err(FromStrError(input.into())),
         }
     }

@@ -155,10 +155,18 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                                 }
                             }
                         }
+                        ParsedStoryFormat::Harlowe => {
+                            println!("Warning: This format is experimental");
+                            
+                            for passage in story.passages.iter() {
+                                dbg!(passage);
+                                break;
+                            }
+                        }
                     }
                 }
-                Some(Err(e)) => {
-                    println!("Warning: Unknown story format `{e}`");
+                Some(Err(story_format)) => {
+                    println!("Warning: Unknown story format \"{story_format}\"");
                 }
                 None => {
                     println!("Warning: Story is missing a format");
@@ -173,7 +181,7 @@ async fn async_main(options: Options) -> anyhow::Result<()> {
                 static CSS_URL_REGEX: Lazy<Regex> =
                     Lazy::new(|| Regex::new(r#"url\((.*)\);"#).unwrap());
                 println!("Warning: Story stylesheet parser only recognizes url() values");
-                let captures = CSS_URL_REGEX.captures_iter(dbg!(css));
+                let captures = CSS_URL_REGEX.captures_iter(css);
                 for capture in captures {
                     let url = &capture[1];
                     println!("Found CSS resource: `{}`", url);
