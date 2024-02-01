@@ -7,4 +7,4 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 once_cell = { version = "1.19.0", default-features = false, features = [ "std" ] }
 scraper = { version = "0.18.1", default-features = false }
-thiserror = "1.0.52"
+thiserror = "1.0.56"
