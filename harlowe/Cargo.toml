@@ -5,4 +5,4 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-winnow = "0.5.31"
+winnow = "0.6.5"
